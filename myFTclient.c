@@ -142,7 +142,7 @@ void upload(int socket, const char *local_name_path, const char *remote_name_pat
     char buffer[BUFFER_SIZE] = {0};
     
     // Get the file size for the PUT command
-    FILE *file = fopen(local_name_path, "r");
+    FILE *file = fopen(local_name_path, "rb");
     if (file == NULL) {
         perror("File not found");
         exit(1);
@@ -153,20 +153,22 @@ void upload(int socket, const char *local_name_path, const char *remote_name_pat
     fseek(file, 0, SEEK_SET);
 
     snprintf(buffer, sizeof(buffer), "PUT %ld %s\n", file_size, remote_name_path);
-    //send(socket, buffer, strlen(buffer), 0);  // Send operation type and path
+    send(socket, buffer, strlen(buffer), 0);  // Send operation type and path
 
     memset(buffer, 0, BUFFER_SIZE);
 
-    while (fgets(buffer, BUFFER_SIZE, file) != NULL) {
-            if (send(socket, buffer, sizeof(buffer),0) == -1) {
-            perror("[-] Error in sending data");
-            exit(1);
-           }
+    int bytes_sent, bytes_read;
 
-           memset(buffer, 0, BUFFER_SIZE);
-
+    while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
+        bytes_sent = send(socket, buffer, bytes_read, 0);
+        if (bytes_sent < 0) {
+            perror("[-] Errore nell'invio dei dati tramite socket");
+            fclose(file);
+            exit(EXIT_FAILURE);
+        }
     }
 
+    memset(buffer, 0, BUFFER_SIZE);
     fclose(file);
 }
 

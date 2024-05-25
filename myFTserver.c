@@ -34,77 +34,48 @@ void release_lock(int f){
 void *client_handler(void *socket_desc) {
     int sock = *(int*)socket_desc;
     char buffer[BUFFER_SIZE];
-    char *path = "server_root/text.txt", *op = "PUT";
-    //int sizeIncoming;
-    //char header[BUFFER_SIZE];
+    int bytes_recv = 0;
+    char op[10];
+    int fileSize;
+    char *path;
+    char *headerEnd;
 
-    /*
-    recv(sock, header, BUFFER_SIZE, 0);
-    */
-    /*riceve le informazioni iniziali, tipo di operazione, numero di bytes e il path*/
-    /*
-    char *token = strtok(header, " ");
-    if (token == NULL) {
-        printf("Comando non valido\n");
-        close(sock);
+    bytes_recv = recv(sock, buffer, BUFFER_SIZE,0);
+    if (bytes_recv <= 0){
+        perror("[-] Errore nella ricezione dell'header\n ");
         return NULL;
     }
-    op = strdup(token);
-    token = strtok(NULL," ");
-    if (token == NULL){
-        printf("Grandezza non valida\n");
-        close(sock);
+
+    headerEnd = strstr(buffer,"\n");
+    if (headerEnd == NULL) {
+        perror("Header non valido\n");
         return NULL;
     }
-    sizeIncoming = atoi(token);
-    token = strtok(NULL, "\n");
-    if (token == NULL) {
-        printf("Percorso non valido\n");
-        close(sock);
+
+    int headerSize = headerEnd - buffer+1;
+    path = malloc((bytes_recv - headerSize + 1) * sizeof(char));
+    sscanf(buffer,"%s %d %s\n", op, &fileSize, path);
+
+    FILE *file = fopen(path,"wb");
+    if (file == NULL) {
+        perror("[-] Errore nell'apertura del file\n");
         return NULL;
     }
-    path = strdup(token);
 
-    memset(buffer,0,sizeof(buffer));
-
-    printf("size file: %d\n", sizeIncoming);
-    printf("operation : %s\n", op);
-    printf("path : %s\n", path);
-
-    */
-    if (strcmp(op, "GET") == 0) {
-        /** Reading operation **/
-
-
-    } else if (strcmp(op, "PUT") == 0) {
-        /** Writing operation **/
-
-        FILE *f = fopen(path, "w");
-
-        if (f == NULL) {
-            perror("[-] Errore nell'apertura del file\n");
-            exit(1);
+    fwrite(headerEnd+1,1, bytes_recv - headerSize, file);
+    fileSize -= bytes_recv - headerSize;
+    while (fileSize > 0) {
+        bytes_recv = recv(sock, buffer, BUFFER_SIZE, 0);
+        if (bytes_recv <= 0){
+            perror("[-] Errore nella ricezione dei dati\n");
+            break;
         }
 
-        int fd = fileno(f); //restituisce il descrittore del file associato a quel FILE
-
-        acquire_lock(fd);
-        // Dopo l'acquisizione del lock
-        
-        int n;
-        while (1) {
-            n = recv(sock, buffer, BUFFER_SIZE,0);
-            if (n <= 0) {
-                break;
-            }
-        }
-
-        // Dopo il rilascio del lock
-        release_lock(fd);
-
-        fclose(f);
+        fwrite(buffer,1,bytes_recv,file);
+        memset(buffer, 0, BUFFER_SIZE);
+        fileSize -= bytes_recv;
     }
-
+    fclose(file);
     printf("Client disconnected\n");
 
     close(sock);
