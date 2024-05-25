@@ -7,7 +7,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-
+/*INSERIRE IL LOCKING DEL FILE (le funzione gia esistono)*/
 #define PORT 8080
 #define MAX_CLIENTS 5
 #define BUFFER_SIZE 1024
