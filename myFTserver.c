@@ -7,7 +7,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-/*INSERIRE IL LOCKING DEL FILE (le funzione gia esistono)*/
+
 #define PORT 8080
 #define MAX_CLIENTS 5
 #define BUFFER_SIZE 1024
@@ -56,26 +56,45 @@ void *client_handler(void *socket_desc) {
     path = malloc((bytes_recv - headerSize + 1) * sizeof(char));
     sscanf(buffer,"%s %d %s\n", op, &fileSize, path);
 
-    FILE *file = fopen(path,"wb");
-    if (file == NULL) {
-        perror("[-] Errore nell'apertura del file\n");
-        return NULL;
-    }
+    if (strcmp(op,"PUT") == 0){
+        // operazione PUT : scrittura di un file ricevuto
 
-    fwrite(headerEnd+1,1, bytes_recv - headerSize, file);
-    fileSize -= bytes_recv - headerSize;
-    while (fileSize > 0) {
-        bytes_recv = recv(sock, buffer, BUFFER_SIZE, 0);
-        if (bytes_recv <= 0){
-            perror("[-] Errore nella ricezione dei dati\n");
-            break;
+        FILE *file = fopen(path,"wb");
+        if (file == NULL) {
+            perror("[-] Errore nell'apertura del file\n");
+            return NULL;
         }
 
-        fwrite(buffer,1,bytes_recv,file);
-        memset(buffer, 0, BUFFER_SIZE);
-        fileSize -= bytes_recv;
+        int fd = fileno(file);
+        acquire_lock(fd);
+
+        fwrite(headerEnd+1,1, bytes_recv - headerSize, file);
+        fileSize -= bytes_recv - headerSize;
+        while (fileSize > 0) {
+            bytes_recv = recv(sock, buffer, BUFFER_SIZE, 0);
+            if (bytes_recv <= 0){
+                perror("[-] Errore nella ricezione dei dati\n");
+                break;
+            }
+
+            fwrite(buffer,1,bytes_recv,file);
+            memset(buffer, 0, BUFFER_SIZE);
+            fileSize -= bytes_recv;
+        }
+        fclose(file);
+
+        release_lock(fd);
+
+    } else if (strcmp(op,"GET") == 0){
+        // operazione GET : invio di un file
+
+    } else {
+        // operazione INF : lettura directory
+        
     }
-    fclose(file);
+
+    
+
     printf("Client disconnected\n");
 
     close(sock);
