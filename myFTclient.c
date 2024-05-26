@@ -120,8 +120,10 @@ int read_file_dimension(const char *path){
 }
 
 void download(int socket, const char *remote_name_path, const char *local_name_path) {
+
+
     char buffer[BUFFER_SIZE] = {0};
-    snprintf(buffer, sizeof(buffer), "GET %d %s", 0,remote_name_path);
+    snprintf(buffer, sizeof(buffer), "GET %d %s\n", 0,remote_name_path);
     send(socket, buffer, strlen(buffer), 0);    //invio tipo di operazione + path
 
     FILE *file = fopen(local_name_path, "wb");
@@ -129,36 +131,65 @@ void download(int socket, const char *remote_name_path, const char *local_name_p
         perror("File creation failed");
         return;
     }
-
-    int n;
-    while ((n = recv(socket, buffer, BUFFER_SIZE, 0)) > 0) {
-        fwrite(buffer, 1, n, file);
-    }   
-    fclose(file);
-    memset(buffer,0,BUFFER_SIZE);
-}
-
-void upload(int socket, const char *local_name_path, const char *remote_name_path) {
-    char buffer[BUFFER_SIZE] = {0};
-    
-    // Get the file size for the PUT command
-    FILE *file = fopen(local_name_path, "rb");
-    if (file == NULL) {
-        perror("File not found");
+    int bytes_recv;
+    bytes_recv = recv(socket,buffer,BUFFER_SIZE,0);
+    if (bytes_recv <= 0){
+        perror("[-] Errore nella ricezione del file\n");
         exit(1);
     }
 
+    if (strncmp(buffer,"NO",2) == 0){
+        perror("[-] Errore nella ricezione del file\n");
+        exit(1);
+    }
+
+    memmove(buffer,buffer +2, BUFFER_SIZE);
+    fwrite(buffer, 1, bytes_recv, file);
+
+    
+    while ((bytes_recv = recv(socket, buffer, BUFFER_SIZE, 0)) > 0) {
+        fwrite(buffer, 1, bytes_recv, file);
+        memset(buffer,0,BUFFER_SIZE);
+    }   
+    fclose(file);
+
+    printf("File Scaricato con successo\n");
+    
+}
+
+void upload(int socket, const char *local_name_path, const char *remote_name_path) {
+    //Caricamento di un file sul server
+    
+    char buffer[BUFFER_SIZE] = {0};
+    int bytes_sent, bytes_read, bytes_recv;
+    FILE *file = fopen(local_name_path, "rb");
+    if (file == NULL) {
+        perror("File not found\n");
+        exit(1);
+    }
+
+    // Lunghezza del file da inviare
     fseek(file, 0, SEEK_END);
     long file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
 
+    // Invio richiesta di scrittura al server
     snprintf(buffer, sizeof(buffer), "PUT %ld %s\n", file_size, remote_name_path);
     send(socket, buffer, strlen(buffer), 0);  // Send operation type and path
-
     memset(buffer, 0, BUFFER_SIZE);
 
-    int bytes_sent, bytes_read;
-
+    // Attesa conferma dal server
+    bytes_recv = recv(socket, buffer, BUFFER_SIZE,0);
+    if (bytes_recv <= 0){
+        perror("[-] Errore nella ricezione della conferma di invio\n");
+        exit(1);
+    }
+    if (strstr("Error", buffer)){
+        printf("Server: %s\n",buffer);
+        exit(1);
+    }
+    
+    //invio del file al server
     while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
         bytes_sent = send(socket, buffer, bytes_read, 0);
         if (bytes_sent < 0) {
@@ -167,10 +198,18 @@ void upload(int socket, const char *local_name_path, const char *remote_name_pat
             exit(EXIT_FAILURE);
         }
     }
-
     memset(buffer, 0, BUFFER_SIZE);
     fclose(file);
+
+    // Esito salvataggio
+    bytes_recv = recv(socket,buffer, BUFFER_SIZE,0);
+    if (bytes_recv <= 0){
+        perror("[-] Errore nella ricezione dell'esito del salvataggio\n");
+        exit(1);
+    }
+    printf("%s\n",buffer);
 }
+
 
 
 int main(int argc, char *argv[]) {
@@ -217,6 +256,7 @@ int main(int argc, char *argv[]) {
     
     else if (options.l_flag) {
         // richiesta di infomazioni
+        //remote_ls(sock,options.file_path);
     }
     close(sock);
 

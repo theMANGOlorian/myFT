@@ -5,12 +5,13 @@
 #include <pthread.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 
-#define PORT 8080
 #define MAX_CLIENTS 5
 #define BUFFER_SIZE 1024
+#define PORT 8080
 
 void acquire_lock(int f){
     struct flock lock;
@@ -32,48 +33,54 @@ void release_lock(int f){
 
 
 void *client_handler(void *socket_desc) {
+
     int sock = *(int*)socket_desc;
     char buffer[BUFFER_SIZE];
-    int bytes_recv = 0;
-    char op[10];
+    int bytes_recv;
+    char *op;
     int fileSize;
     char *path;
-    char *headerEnd;
 
+    // Ricezione della richiesta
     bytes_recv = recv(sock, buffer, BUFFER_SIZE,0);
     if (bytes_recv <= 0){
-        perror("[-] Errore nella ricezione dell'header\n ");
+        perror("[-] Errore nella ricezione della richiesta\n ");
         return NULL;
     }
-
-    headerEnd = strstr(buffer,"\n");
-    if (headerEnd == NULL) {
-        perror("Header non valido\n");
-        return NULL;
-    }
-
-    int headerSize = headerEnd - buffer+1;
-    path = malloc((bytes_recv - headerSize + 1) * sizeof(char));
-    sscanf(buffer,"%s %d %s\n", op, &fileSize, path);
+    op = strtok(buffer," ");
+    fileSize = atoi(strtok(NULL," "));
+    path = strtok(NULL,"\n");
+    printf("op: %s\npath: %s\nfileSize: %d\n",op, path, fileSize);
 
     if (strcmp(op,"PUT") == 0){
         // operazione PUT : scrittura di un file ricevuto
 
-        FILE *file = fopen(path,"wb");
-        if (file == NULL) {
-            perror("[-] Errore nell'apertura del file\n");
+        //fare il controllo dello spazio
+        if (0) {
+            send(sock,"Error",strlen("Error"),0);
             return NULL;
         }
 
-        int fd = fileno(file);
-        acquire_lock(fd);
+        // Apertura del file in scrittura
+        FILE *file = fopen(path,"wb");
+        if (file == NULL) {
+            perror("[-] Errore nell'apertura del file\n");
+            send(sock,"Error",strlen("Error"),0);
+            return NULL;
+        }
 
-        fwrite(headerEnd+1,1, bytes_recv - headerSize, file);
-        fileSize -= bytes_recv - headerSize;
+        // conferma positiva
+        send(sock,"OK",strlen("OK"),0);
+
+        int fd = fileno(file);
+        // Locking del file
+        acquire_lock(fd);
+        int error = 0;
         while (fileSize > 0) {
             bytes_recv = recv(sock, buffer, BUFFER_SIZE, 0);
             if (bytes_recv <= 0){
                 perror("[-] Errore nella ricezione dei dati\n");
+                error = 1;
                 break;
             }
 
@@ -82,28 +89,99 @@ void *client_handler(void *socket_desc) {
             fileSize -= bytes_recv;
         }
         fclose(file);
-
+        // Unlocking del file
         release_lock(fd);
+
+        if (!error){
+            send(sock,"File caricato con successo", strlen("File caricato con successo"),0);
+        }
 
     } else if (strcmp(op,"GET") == 0){
         // operazione GET : invio di un file
 
+        FILE *file = fopen(path,"rb");
+        if (file == NULL) {
+            perror("[-] errore nell'apertura del file\n");
+            send(sock,"NO",strlen("NO"),0);
+            return NULL;
+        }
+
+        send(sock,"OK",strlen("OK"),0);
+        int bytes_read, bytes_sent;
+        while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
+            bytes_sent = send(sock, buffer, bytes_read, 0);
+            if (bytes_sent < 0) {
+                perror("[-] Errore nell'invio dei dati tramite socket");
+                fclose(file);
+                return NULL;
+            }
+        }
+        fclose(file);
+        memset(buffer,0,BUFFER_SIZE);
+        
+
     } else {
         // operazione INF : lettura directory
-        
+
     }
 
-    
-
     printf("Client disconnected\n");
-
     close(sock);
     free(socket_desc);
     return NULL;
 }
 
+typedef struct {
+    char *server_address;
+    char *server_port;
+    char *ft_root_directory;
+} ServerConfig;
 
-int main() {
+int parse_arguments(int argc, char *argv[], ServerConfig *config) {
+    int opt;
+
+    // Initialize the config structure with NULL values
+    config->server_address = NULL;
+    config->server_port = NULL;
+    config->ft_root_directory = NULL;
+
+    // Parse command line arguments using getopt
+    while ((opt = getopt(argc, argv, "a:p:d:")) != -1) {
+        switch (opt) {
+            case 'a':
+                config->server_address = optarg;
+                break;
+            case 'p':
+                config->server_port = optarg;
+                break;
+            case 'd':
+                config->ft_root_directory = optarg;
+                break;
+            default:
+                printf("Usage: -a server_address -p server_port -d ft_root_directory\n");
+                return 1;
+        }
+    }
+
+    // Check if all required parameters are provided
+    if (config->server_address == NULL || config->server_port == NULL || config->ft_root_directory == NULL) {
+        printf("Usage: -a server_address -p server_port -d ft_root_directory\n");
+        return 1;
+    }
+
+    return 0;
+}
+
+
+int main(int argc, char *argv[]) {
+
+    ServerConfig config;
+    // gestione argomenti linea di comando
+    if (parse_arguments(argc, argv, &config) != 0) {
+        return 1;
+    }
+
+
     int server_sock, client_sock, *new_sock;
     struct sockaddr_in server, client;
     socklen_t client_len = sizeof(struct sockaddr_in);
@@ -115,9 +193,15 @@ int main() {
     }
     printf("Socket created\n");
 
+    int opt = 1;
+    if (setsockopt(server_sock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
+    }
+
     server.sin_family = AF_INET;
-    server.sin_addr.s_addr = INADDR_ANY;
-    server.sin_port = htons(PORT);
+    server.sin_addr.s_addr = inet_addr(config.server_address);
+    server.sin_port = htons(atoi(config.server_port));
 
     if (bind(server_sock, (struct sockaddr *)&server, sizeof(server)) < 0) {
         perror("Bind failed");
