@@ -90,7 +90,14 @@ CommandLineOptions parse_command_line(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
+    /**Update**/
+    if (!options.output_path){
+        options.output_path = options.file_path;
+    }
+    /****/
+
     return options;
+
 }
 
 void print_options(const CommandLineOptions *options) {
@@ -143,14 +150,14 @@ void download(int socket, const char *remote_name_path, const char *local_name_p
         exit(1);
     }
 
-    memmove(buffer,buffer +2, BUFFER_SIZE);
-    fwrite(buffer, 1, bytes_recv, file);
+    memmove(buffer,buffer+2, BUFFER_SIZE);
+    fwrite(buffer, 1, bytes_recv-2, file);
 
-    
     while ((bytes_recv = recv(socket, buffer, BUFFER_SIZE, 0)) > 0) {
         fwrite(buffer, 1, bytes_recv, file);
         memset(buffer,0,BUFFER_SIZE);
-    }   
+    }
+    
     fclose(file);
 
     printf("File Scaricato con successo\n");

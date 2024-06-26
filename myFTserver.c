@@ -8,10 +8,22 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <sys/statvfs.h>
 
 #define MAX_CLIENTS 5
 #define BUFFER_SIZE 1024
 #define PORT 8080
+
+typedef struct {
+    char *server_address;
+    char *server_port;
+    char *ft_root_directory;
+} ServerConfig;
+
+typedef struct {
+    int client_socket;
+    ServerConfig *config;
+} ClientHandlerParam;
 
 void acquire_lock(int f){
     struct flock lock;
@@ -31,15 +43,41 @@ void release_lock(int f){
     fcntl(f, F_SETLKW, &lock); // Lock e attesa
 }
 
+int check_space(unsigned long long fileSize) {
+    struct statvfs stat;
+    const char *path = "/"; // Usare la radice del filesystem
 
-void *client_handler(void *socket_desc) {
+    // Ottieni le informazioni del filesystem
+    if (statvfs(path, &stat) != 0) {
+        // Errore nel recupero delle informazioni
+        perror("[-] statvfs");
+        return 0;
+    }
 
-    int sock = *(int*)socket_desc;
+    // Calcola lo spazio libero in bytes
+    unsigned long long freeSpace = stat.f_bsize * stat.f_bavail;
+
+    if (freeSpace >= fileSize) {
+        return 1; // Abbastanza spazio
+    } else {
+        return 0; // Non abbastanza spazio
+    }
+}
+
+
+void *client_handler(void *param) {
+
+    ClientHandlerParam *handler_param = (ClientHandlerParam *)param;
+    int sock = handler_param->client_socket;
+    ServerConfig *config = handler_param->config;
+    printf("::%s", config->ft_root_directory);
+
     char buffer[BUFFER_SIZE];
     int bytes_recv;
     char *op;
     int fileSize;
     char *path;
+    
 
     // Ricezione della richiesta
     bytes_recv = recv(sock, buffer, BUFFER_SIZE,0);
@@ -47,22 +85,27 @@ void *client_handler(void *socket_desc) {
         perror("[-] Errore nella ricezione della richiesta\n ");
         return NULL;
     }
+
     op = strtok(buffer," ");
     fileSize = atoi(strtok(NULL," "));
     path = strtok(NULL,"\n");
     printf("op: %s\npath: %s\nfileSize: %d\n",op, path, fileSize);
 
+    char *fullpath = malloc(strlen(config->ft_root_directory) + strlen(path) + 1);
+    strcpy(fullpath, config->ft_root_directory);
+    strcat(fullpath,path);
+
     if (strcmp(op,"PUT") == 0){
         // operazione PUT : scrittura di un file ricevuto
 
         //fare il controllo dello spazio
-        if (0) {
+        if (check_space(fileSize)) {   
             send(sock,"Error",strlen("Error"),0);
             return NULL;
         }
 
         // Apertura del file in scrittura
-        FILE *file = fopen(path,"wb");
+        FILE *file = fopen(fullpath,"wb");
         if (file == NULL) {
             perror("[-] Errore nell'apertura del file\n");
             send(sock,"Error",strlen("Error"),0);
@@ -99,7 +142,7 @@ void *client_handler(void *socket_desc) {
     } else if (strcmp(op,"GET") == 0){
         // operazione GET : invio di un file
 
-        FILE *file = fopen(path,"rb");
+        FILE *file = fopen(fullpath,"rb");
         if (file == NULL) {
             perror("[-] errore nell'apertura del file\n");
             send(sock,"NO",strlen("NO"),0);
@@ -127,15 +170,10 @@ void *client_handler(void *socket_desc) {
 
     printf("Client disconnected\n");
     close(sock);
-    free(socket_desc);
+    free(handler_param);
     return NULL;
 }
 
-typedef struct {
-    char *server_address;
-    char *server_port;
-    char *ft_root_directory;
-} ServerConfig;
 
 int parse_arguments(int argc, char *argv[], ServerConfig *config) {
     int opt;
@@ -182,7 +220,7 @@ int main(int argc, char *argv[]) {
     }
 
 
-    int server_sock, client_sock, *new_sock;
+    int server_sock, client_sock;
     struct sockaddr_in server, client;
     socklen_t client_len = sizeof(struct sockaddr_in);
 
@@ -216,10 +254,16 @@ int main(int argc, char *argv[]) {
         printf("Connection accepted\n");
 
         pthread_t client_thread;
-        new_sock = malloc(1);
-        *new_sock = client_sock;
 
-        if (pthread_create(&client_thread, NULL, client_handler, (void*)new_sock) < 0) {
+        ClientHandlerParam *handler_param = malloc(sizeof(ClientHandlerParam));
+        if (handler_param == NULL) {
+            perror("Could not allocate memory for handler_args");
+            return 1;
+        }
+        handler_param->client_socket = client_sock;
+        handler_param->config = &config;
+
+        if (pthread_create(&client_thread, NULL, client_handler, (void*)handler_param) < 0) {
             perror("Could not create thread");
             return 1;
         }
