@@ -114,6 +114,8 @@ void print_options(const CommandLineOptions *options) {
         printf("  output_path: (null)\n");
     }
 }
+
+// funzione non usata
 int read_file_dimension(const char *path){
     FILE* fp = fopen(path,"rb");
     int size = -1;
@@ -133,11 +135,25 @@ void download(int socket, const char *remote_name_path, const char *local_name_p
     snprintf(buffer, sizeof(buffer), "GET %d %s\n", 0,remote_name_path);
     send(socket, buffer, strlen(buffer), 0);    //invio tipo di operazione + path
 
-    FILE *file = fopen(local_name_path, "wb");
+
+    char *user_path = getenv("HOME");
+    if (user_path == NULL){
+        perror("[-] Error:getenv()\n");
+        exit(1);
+    }
+
+    // percorso completo relativo all'utente che sta eseguendo il programma
+    char *full_local_path = malloc(strlen(user_path) + strlen(local_name_path) + 1);
+    strcpy(full_local_path,user_path);
+    strcat(full_local_path,local_name_path);
+    printf("full path: %s\n", full_local_path);
+
+    FILE *file = fopen(full_local_path, "wb");
     if (file == NULL) {
         perror("File creation failed");
         return;
     }
+
     int bytes_recv;
     bytes_recv = recv(socket,buffer,BUFFER_SIZE,0);
     if (bytes_recv <= 0){
@@ -160,6 +176,8 @@ void download(int socket, const char *remote_name_path, const char *local_name_p
     
     fclose(file);
 
+    free(full_local_path);
+
     printf("File Scaricato con successo\n");
     
 }
@@ -169,7 +187,20 @@ void upload(int socket, const char *local_name_path, const char *remote_name_pat
     
     char buffer[BUFFER_SIZE] = {0};
     int bytes_sent, bytes_read, bytes_recv;
-    FILE *file = fopen(local_name_path, "rb");
+
+    char *user_path = getenv("HOME");
+    if (user_path == NULL){
+        perror("[-] Error:getenv()\n");
+        exit(1);
+    }
+    
+    char *full_local_path = malloc(strlen(user_path) + strlen(local_name_path) + 1);
+    strcpy(full_local_path,user_path);
+    strcat(full_local_path,local_name_path);
+    printf("full path: %s\n", full_local_path);
+
+
+    FILE *file = fopen(full_local_path, "rb");
     if (file == NULL) {
         perror("File not found\n");
         exit(1);
@@ -214,7 +245,8 @@ void upload(int socket, const char *local_name_path, const char *remote_name_pat
         perror("[-] Errore nella ricezione dell'esito del salvataggio\n");
         exit(1);
     }
-    printf("%s\n",buffer);
+    
+    free(full_local_path);
 }
 
 

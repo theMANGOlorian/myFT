@@ -57,10 +57,10 @@ int check_space(unsigned long long fileSize) {
     // Calcola lo spazio libero in bytes
     unsigned long long freeSpace = stat.f_bsize * stat.f_bavail;
 
-    if (freeSpace >= fileSize) {
-        return 1; // Abbastanza spazio
+    if (freeSpace > fileSize) {
+        return 0; // Abbastanza spazio
     } else {
-        return 0; // Non abbastanza spazio
+        return 1; // Non abbastanza spazio
     }
 }
 
@@ -101,6 +101,7 @@ void *client_handler(void *param) {
         //fare il controllo dello spazio
         if (check_space(fileSize)) {   
             send(sock,"Error",strlen("Error"),0);
+            printf("FFANCULO\n");
             return NULL;
         }
 
@@ -193,7 +194,13 @@ int parse_arguments(int argc, char *argv[], ServerConfig *config) {
                 config->server_port = optarg;
                 break;
             case 'd':
-                config->ft_root_directory = optarg;
+                char *user_path = getenv("HOME");
+                char *full_path = malloc(strlen(user_path) + strlen(optarg) + 1);
+                strcpy(full_path,user_path);
+                strcat(full_path,optarg);
+                config->ft_root_directory = full_path;
+                printf("ft_root_directory: %s\n",config->ft_root_directory);
+                //config->ft_root_directory = optarg;
                 break;
             default:
                 printf("Usage: -a server_address -p server_port -d ft_root_directory\n");
