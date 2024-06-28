@@ -38,7 +38,7 @@ CommandLineOptions parse_command_line(int argc, char *argv[]) {
     int opt;
 
     // Parse options
-    while ((opt = getopt(argc, argv, "wrl:a:p:f:o:")) != -1) {
+    while ((opt = getopt(argc, argv, "wrl::a:p:f:o:")) != -1) {
         switch (opt) {
             case 'w':
                 if (options.r_flag || options.l_flag) {
@@ -90,11 +90,9 @@ CommandLineOptions parse_command_line(int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
 
-    /**Update**/
     if (!options.output_path){
         options.output_path = options.file_path;
     }
-    /****/
 
     return options;
 
@@ -193,7 +191,7 @@ void upload(int socket, const char *local_name_path, const char *remote_name_pat
         perror("[-] Error:getenv()\n");
         exit(1);
     }
-    
+
     char *full_local_path = malloc(strlen(user_path) + strlen(local_name_path) + 1);
     strcpy(full_local_path,user_path);
     strcat(full_local_path,local_name_path);
@@ -249,6 +247,32 @@ void upload(int socket, const char *local_name_path, const char *remote_name_pat
     free(full_local_path);
 }
 
+void explore(int socket, const char *remote_name_path){
+    char buffer[BUFFER_SIZE] = {0};
+    snprintf(buffer, sizeof(buffer), "INF %d %s\n", 0, remote_name_path);
+    send(socket, buffer, strlen(buffer), 0);
+
+    int bytes_recv;
+    bytes_recv = recv(socket,buffer,BUFFER_SIZE,0);
+    if (bytes_recv <= 0){
+        perror("[-] Errore nella ricezione del output\n");
+        exit(1);
+    }
+
+    if (strncmp(buffer,"NO",2) == 0){
+        perror("[-] Errore nella ricezione del output\n");
+        exit(1);
+    }
+
+    memmove(buffer,buffer+2, BUFFER_SIZE);
+    printf("%s",buffer);
+
+    while ((bytes_recv = recv(socket, buffer, BUFFER_SIZE, 0)) > 0) {
+        printf("%s",buffer);
+        memset(buffer,0,BUFFER_SIZE);
+    }
+
+}
 
 
 int main(int argc, char *argv[]) {
@@ -295,7 +319,7 @@ int main(int argc, char *argv[]) {
     
     else if (options.l_flag) {
         // richiesta di infomazioni
-        //remote_ls(sock,options.file_path);
+        explore(sock,options.file_path);
     }
     close(sock);
 

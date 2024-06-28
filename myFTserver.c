@@ -7,6 +7,7 @@
 #include <sys/types.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <sys/statvfs.h>
 
@@ -64,6 +65,63 @@ int check_space(unsigned long long fileSize) {
     }
 }
 
+char* execute_ls_la(const char* path) {
+    int pipefd[2];
+    pid_t pid;
+    char buffer[BUFFER_SIZE];
+    char* result = NULL;
+    size_t result_len = 0;
+    // Creare la pipe
+    if (pipe(pipefd) == -1) {
+        perror("pipe");
+        return NULL;
+    }
+    // Creare il processo figlio
+    pid = fork();
+    if (pid == -1) {
+        perror("fork");
+        return NULL;
+    }
+    if (pid == 0) { // Processo figlio
+        // Chiudere il lato di lettura della pipe
+        close(pipefd[0]);
+        // Reindirizzare stdout alla pipe
+        dup2(pipefd[1], STDOUT_FILENO);
+        close(pipefd[1]);
+        // Eseguire il comando "ls -la"
+        execlp("ls", "ls", "-la", path, (char *)NULL);
+        // Se execlp fallisce
+        perror("execlp");
+        exit(EXIT_FAILURE);
+    } else { // Processo padre
+        // Chiudere il lato di scrittura della pipe
+        close(pipefd[1]);
+        // Leggere l'output del comando dalla pipe
+        ssize_t count;
+        while ((count = read(pipefd[0], buffer, sizeof(buffer))) > 0) {
+            result = realloc(result, result_len + count + 1);
+            if (result == NULL) {
+                perror("realloc");
+                close(pipefd[0]);
+                return NULL;
+            }
+            memcpy(result + result_len, buffer, count);
+            result_len += count;
+        }
+        close(pipefd[0]);
+        if (count == -1) {
+            perror("read");
+            free(result);
+            return NULL;
+        }
+        // Null-terminare la stringa risultante
+        result[result_len] = '\0';
+        // Attendere la terminazione del processo figlio
+        wait(NULL);
+    }
+    return result;
+}
+
 
 void *client_handler(void *param) {
 
@@ -101,7 +159,6 @@ void *client_handler(void *param) {
         //fare il controllo dello spazio
         if (check_space(fileSize)) {   
             send(sock,"Error",strlen("Error"),0);
-            printf("FFANCULO\n");
             return NULL;
         }
 
@@ -164,13 +221,27 @@ void *client_handler(void *param) {
         memset(buffer,0,BUFFER_SIZE);
         
 
-    } else {
+    } else if (strcmp(op,"INF") == 0){
         // operazione INF : lettura directory
-
+        char* output_ls = execute_ls_la(fullpath);
+        if (output_ls == NULL){
+            perror("[-] Error:output_ls is NULL\n");
+            send(sock,"NO",strlen("NO"),0);
+            return NULL;
+        }
+        send(sock,"OK",strlen("OK"),0);
+        int bytes_sent = send(sock,output_ls,strlen(output_ls),0);
+        if (bytes_sent < 0){
+            perror("[-] Errore nell'invio dei dati tramite socket");
+            free(output_ls);
+            return NULL;
+        }
+        free(output_ls);
     }
 
     printf("Client disconnected\n");
     close(sock);
+    free(fullpath);
     free(handler_param);
     return NULL;
 }
