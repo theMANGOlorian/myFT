@@ -1,3 +1,15 @@
+/*
+Progetto: MyFT
+Autore: Mattia Pandolfi
+Descrizione: Applicazione Client/Server per il trasferimento file.
+*/
+
+/** Esempio di input
+ * 
+ * ./server -a 127.0.0.1 -p 6969 -d /Scrivania/C/myFT/server_root
+ * 
+ * **/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +25,6 @@
 
 #define MAX_CLIENTS 5
 #define BUFFER_SIZE 1024
-#define PORT 8080
 
 typedef struct {
     char *server_address;
@@ -51,13 +62,12 @@ int check_space(unsigned long long fileSize) {
     // Ottieni le informazioni del filesystem
     if (statvfs(path, &stat) != 0) {
         // Errore nel recupero delle informazioni
-        perror("[-] statvfs");
+        perror("[-] Error:statvfs");
         return 0;
     }
 
     // Calcola lo spazio libero in bytes
     unsigned long long freeSpace = stat.f_bsize * stat.f_bavail;
-
     if (freeSpace > fileSize) {
         return 0; // Abbastanza spazio
     } else {
@@ -128,7 +138,6 @@ void *client_handler(void *param) {
     ClientHandlerParam *handler_param = (ClientHandlerParam *)param;
     int sock = handler_param->client_socket;
     ServerConfig *config = handler_param->config;
-    printf("::%s", config->ft_root_directory);
 
     char buffer[BUFFER_SIZE];
     int bytes_recv;
@@ -157,8 +166,10 @@ void *client_handler(void *param) {
         // operazione PUT : scrittura di un file ricevuto
 
         //fare il controllo dello spazio
-        if (check_space(fileSize)) {   
-            send(sock,"Error",strlen("Error"),0);
+        if (check_space(fileSize)) {
+            perror("[-] Spazio non sufficiente\n");
+            char* msg_error = "[-] Not enough space";
+            send(sock,msg_error,strlen(msg_error),0);
             return NULL;
         }
 
@@ -166,7 +177,8 @@ void *client_handler(void *param) {
         FILE *file = fopen(fullpath,"wb");
         if (file == NULL) {
             perror("[-] Errore nell'apertura del file\n");
-            send(sock,"Error",strlen("Error"),0);
+            char* msg_error = "[-] Error opening the file";
+            send(sock,msg_error,strlen(msg_error),0);
             return NULL;
         }
 
@@ -194,7 +206,8 @@ void *client_handler(void *param) {
         release_lock(fd);
 
         if (!error){
-            send(sock,"File caricato con successo", strlen("File caricato con successo"),0);
+            char* msg = "File uploaded successfully";
+            send(sock,msg, strlen(msg),0);
         }
 
     } else if (strcmp(op,"GET") == 0){

@@ -1,14 +1,15 @@
 
 /*
-Da fare:
-Inviare comandi al server.
-Ricevere cose dal server
-Controllo parametri input //ci pensa il server
-File remoto non esistente (lettura) //ci pensa il server
-Spazio archiviazione insufficiente sul server (scritttura) //ci pensa il server
-Interruzione della connessione con il server
-controllo file locale eistente?
+Progetto: MyFT
+Autore: Mattia Pandolfi
+Descrizione: Applicazione Client/Server per il trasferimento file.
 */
+/**
+ * ./client -w -a 127.0.0.1 -p 6969 -f /Scrivania/C/myFT/client_dir/Ring.txt -o /Ring.txt
+ * ./client -l -a 127.0.0.1 -p 6969 -f /
+ * ./client -r -a 127.0.0.1 -p 6969 -f /Ring.txt -o /Scrivania/C/myFT/client_dir/Ring.txt
+ * 
+ * **/
 
 #include <netinet/in.h> // Struttura per mantenere le informazioni dell'address
 #include <stdio.h>
@@ -113,19 +114,6 @@ void print_options(const CommandLineOptions *options) {
     }
 }
 
-// funzione non usata
-int read_file_dimension(const char *path){
-    FILE* fp = fopen(path,"rb");
-    int size = -1;
-    if (fp) {
-        fseek(fp,0,SEEK_END);
-        size = ftell(fp);
-        fclose(fp);
-    }
-    printf("File size: %d\n",size);
-    return size;
-}
-
 void download(int socket, const char *remote_name_path, const char *local_name_path) {
 
 
@@ -144,7 +132,6 @@ void download(int socket, const char *remote_name_path, const char *local_name_p
     char *full_local_path = malloc(strlen(user_path) + strlen(local_name_path) + 1);
     strcpy(full_local_path,user_path);
     strcat(full_local_path,local_name_path);
-    printf("full path: %s\n", full_local_path);
 
     FILE *file = fopen(full_local_path, "wb");
     if (file == NULL) {
@@ -176,7 +163,7 @@ void download(int socket, const char *remote_name_path, const char *local_name_p
 
     free(full_local_path);
 
-    printf("File Scaricato con successo\n");
+    printf("File downloaded successfully\n");
     
 }
 
@@ -195,7 +182,7 @@ void upload(int socket, const char *local_name_path, const char *remote_name_pat
     char *full_local_path = malloc(strlen(user_path) + strlen(local_name_path) + 1);
     strcpy(full_local_path,user_path);
     strcat(full_local_path,local_name_path);
-    printf("full path: %s\n", full_local_path);
+    //printf("full path: %s\n", full_local_path);
 
 
     FILE *file = fopen(full_local_path, "rb");
@@ -220,7 +207,8 @@ void upload(int socket, const char *local_name_path, const char *remote_name_pat
         perror("[-] Errore nella ricezione della conferma di invio\n");
         exit(1);
     }
-    if (strstr("Error", buffer)){
+
+    if (strstr(buffer, "[-]") != NULL){
         printf("Server: %s\n",buffer);
         exit(1);
     }
@@ -243,7 +231,7 @@ void upload(int socket, const char *local_name_path, const char *remote_name_pat
         perror("[-] Errore nella ricezione dell'esito del salvataggio\n");
         exit(1);
     }
-    
+    printf("%s\n",buffer);
     free(full_local_path);
 }
 
@@ -279,7 +267,8 @@ int main(int argc, char *argv[]) {
 
     //parsing del comando
     CommandLineOptions options = parse_command_line(argc,argv);
-    print_options(&options);
+
+    //print_options(&options); Scommentare per vedere opzioni e parametri messi.
 
 
     int sock;
