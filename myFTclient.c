@@ -6,7 +6,7 @@ Descrizione: Applicazione Client/Server per il trasferimento file.
 */
 /**
  * ./client -w -a 127.0.0.1 -p 6969 -f /Scrivania/C/myFT/client_dir/Ring.txt -o /Ring.txt
- * ./client -l -a 127.0.0.1 -p 6969 -f /
+ * ./client -l -a 127.0.0.1 -p 6969 -f .
  * ./client -r -a 127.0.0.1 -p 6969 -f /Ring.txt -o /Scrivania/C/myFT/client_dir/Ring.txt
  * 
  * **/

@@ -6,7 +6,7 @@ Descrizione: Applicazione Client/Server per il trasferimento file.
 
 /** Esempio di input
  * 
- * ./server -a 127.0.0.1 -p 6969 -d /Scrivania/C/myFT/server_root
+ * ./server -a 127.0.0.1 -p 6969 -d /Scrivania/C/myFT/server_root/
  * 
  * **/
 
@@ -37,7 +37,7 @@ typedef struct {
     ServerConfig *config;
 } ClientHandlerParam;
 
-void acquire_lock(int f){
+void acquire_lock_writer(int f){
     struct flock lock;
     lock.l_type = F_WRLCK; // Lock in scrittura
     lock.l_whence = SEEK_SET;
@@ -45,7 +45,14 @@ void acquire_lock(int f){
     lock.l_len = 0;
     fcntl(f, F_SETLKW, &lock); // Lock e attesa
 }
-
+void acquire_lock_reader(int f){
+    struct flock lock;
+    lock.l_type = F_RDLCK; // Lock in lettura
+    lock.l_whence = SEEK_SET;
+    lock.l_start = 0;
+    lock.l_len = 0;
+    fcntl(f, F_SETLKW, &lock); // Lock e attesa
+}
 void release_lock(int f){
     struct flock lock;
     lock.l_type = F_UNLCK; // Rilascia il lock
@@ -187,7 +194,7 @@ void *client_handler(void *param) {
 
         int fd = fileno(file);
         // Locking del file
-        acquire_lock(fd);
+        acquire_lock_writer(fd);
         int error = 0;
         while (fileSize > 0) {
             bytes_recv = recv(sock, buffer, BUFFER_SIZE, 0);
@@ -221,6 +228,8 @@ void *client_handler(void *param) {
         }
 
         send(sock,"OK",strlen("OK"),0);
+        acquire_lock_reader(fileno(file));
+
         int bytes_read, bytes_sent;
         while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
             bytes_sent = send(sock, buffer, bytes_read, 0);
@@ -231,6 +240,7 @@ void *client_handler(void *param) {
             }
         }
         fclose(file);
+        release_lock(fileno(file));
         memset(buffer,0,BUFFER_SIZE);
         
 
