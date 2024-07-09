@@ -22,6 +22,7 @@ Descrizione: Applicazione Client/Server per il trasferimento file.
 #include <sys/wait.h>
 #include <netinet/in.h>
 #include <sys/statvfs.h>
+#include <sys/stat.h>
 
 #define MAX_CLIENTS 5
 #define BUFFER_SIZE 1024
@@ -137,6 +138,15 @@ char* execute_ls_la(const char* path) {
         wait(NULL);
     }
     return result;
+}
+
+// creazione server root path
+int make_server_root_dir(const char *path){
+    struct stat st = {0};
+    if (stat(path,&st) == -1){
+        return mkdir(path,0700);
+    }
+    return 0;
 }
 
 
@@ -320,6 +330,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
+    //server_root path
+    if (make_server_root_dir(config.ft_root_directory) != 0){
+        printf("[-] Errore nella creazione della server root directory\n");
+        exit(1);
+    }
 
     int server_sock, client_sock;
     struct sockaddr_in server, client;
@@ -347,6 +362,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     printf("Bind done\n");
+
 
     listen(server_sock, MAX_CLIENTS);
     printf("Waiting for incoming connections...\n");
