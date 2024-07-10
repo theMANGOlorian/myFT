@@ -20,19 +20,9 @@ Descrizione: Applicazione Client/Server per il trasferimento file.
 #include <unistd.h>     // Aggiunto per usare close()
 #include <arpa/inet.h> // Aggiunto per usare inet_pton()
 
-#define BUFFER_SIZE 1024
+#include "myFTclient.h"
 
-typedef struct {
-    int w_flag;
-    int r_flag;
-    int l_flag;
-    char *server_address;
-    int port;
-    char *file_path;
-    char *output_path;
-} CommandLineOptions;
-
-
+*/
 /*client parsing*/
 CommandLineOptions parse_command_line(int argc, char *argv[]) {
     CommandLineOptions options = {0, 0, 0, NULL, 0, NULL, NULL};
@@ -136,7 +126,7 @@ void download(int socket, const char *remote_name_path, const char *local_name_p
     FILE *file = fopen(full_local_path, "wb");
     if (file == NULL) {
         perror("File creation failed");
-        return;
+        exit(1);
     }
 
     int bytes_recv;

@@ -24,19 +24,7 @@ Descrizione: Applicazione Client/Server per il trasferimento file.
 #include <sys/statvfs.h>
 #include <sys/stat.h>
 
-#define MAX_CLIENTS 5
-#define BUFFER_SIZE 1024
-
-typedef struct {
-    char *server_address;
-    char *server_port;
-    char *ft_root_directory;
-} ServerConfig;
-
-typedef struct {
-    int client_socket;
-    ServerConfig *config;
-} ClientHandlerParam;
+#include "myFTserver.h"
 
 void acquire_lock_writer(int f){
     struct flock lock;
