@@ -242,7 +242,9 @@ void explore(int socket, const char *remote_name_path){
     // costruisce il messaggio di richiesta di esplorazione e lo invia al server
     snprintf(buffer, sizeof(buffer), "INF %d %s\n", 0, remote_name_path);
     send(socket, buffer, strlen(buffer), 0);
+    
     // riceve la risposta dal server
+    memset(buffer,0,BUFFER_SIZE);
     int bytes_recv;
     bytes_recv = recv(socket,buffer,BUFFER_SIZE,0);
     if (bytes_recv <= 0){

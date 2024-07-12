@@ -84,23 +84,28 @@ int check_space(unsigned long long fileSize) {
 * Ritorna l'output.
 */
 char* execute_ls_la(const char* path) {
-    int pipefd[2]; //array usato per creare la pipe
-    pid_t pid; //memorizza l'id del processo figlio
-    char buffer[BUFFER_SIZE]; // buffer usato per leggere l'output del comando
-    char* result = NULL; // puntatore per il risultato da ritornare
+    int pipefd[2]; // Array usato per creare la pipe
+    pid_t pid; // Memorizza l'id del processo figlio
+    char buffer[1024]; // Buffer usato per leggere l'output del comando
+    char* result = NULL; // Puntatore per il risultato da ritornare
     size_t result_len = 0;
+
     // Creare la pipe
     if (pipe(pipefd) == -1) {
         perror("pipe");
         return NULL;
     }
+
     // Creare il processo figlio con fork
     pid = fork();
     if (pid == -1) {
         perror("fork");
+        close(pipefd[0]);
+        close(pipefd[1]);
         return NULL;
     }
-    if (pid == 0) { // se pid == 0 allora processo figlio
+
+    if (pid == 0) { // Se pid == 0 allora processo figlio
         // Chiudere il lato di lettura della pipe
         close(pipefd[0]);
         // Reindirizzare stdout alla pipe
@@ -114,11 +119,12 @@ char* execute_ls_la(const char* path) {
     } else { // Processo padre
         // Chiudere il lato di scrittura della pipe
         close(pipefd[1]);
+
         // Leggere l'output del comando dalla pipe usando il buffer
         ssize_t count;
         while ((count = read(pipefd[0], buffer, sizeof(buffer))) > 0) {
-            // ogni volta che vengono letti dei dati realloc alloca più memoria per il result
-            result = realloc(result, result_len + count + 1); 
+            // Ogni volta che vengono letti dei dati realloc alloca più memoria per il result
+            result = realloc(result, result_len + count + 1);
             if (result == NULL) {
                 perror("realloc");
                 close(pipefd[0]);
@@ -127,16 +133,30 @@ char* execute_ls_la(const char* path) {
             memcpy(result + result_len, buffer, count);
             result_len += count;
         }
+
         close(pipefd[0]);
         if (count == -1) {
             perror("read");
             free(result);
             return NULL;
         }
+
         // Null-terminare la stringa risultante
         result[result_len] = '\0';
-        // Attendere la terminazione del processo figlio
-        wait(NULL);
+
+        // Utilizzare waitpid per aspettare la terminazione del processo figlio
+        int status;
+        if (waitpid(pid, &status, 0) == -1) {
+            perror("waitpid");
+            free(result);
+            return NULL;
+        }
+
+        if (WIFEXITED(status)) {
+            printf("Child process exited with status %d\n", WEXITSTATUS(status));
+        } else {
+            printf("Child process terminated abnormally\n");
+        }
     }
     return result;
 }
