@@ -192,9 +192,17 @@ void upload(int socket, const char *local_name_path, const char *remote_name_pat
     }
 
     // determina la dimesione del file
-    fseek(file, 0, SEEK_END);
+    if (fseek(file, 0, SEEK_END) != 0) {
+        perror("Error seeking to end of file");
+        exit(1);
+    }
     long file_size = ftell(file);
+    if (file_size == -1L) {
+        perror("Error getting file size");
+        exit(1);
+    }
     fseek(file, 0, SEEK_SET);
+
 
     // Icostruisce il messaggio di richiesta di scrittura e lo invia al server
     snprintf(buffer, sizeof(buffer), "PUT %ld %s\n", file_size, remote_name_path);
@@ -242,7 +250,7 @@ void explore(int socket, const char *remote_name_path){
     // costruisce il messaggio di richiesta di esplorazione e lo invia al server
     snprintf(buffer, sizeof(buffer), "INF %d %s\n", 0, remote_name_path);
     send(socket, buffer, strlen(buffer), 0);
-    
+
     // riceve la risposta dal server
     memset(buffer,0,BUFFER_SIZE);
     int bytes_recv;

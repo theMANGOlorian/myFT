@@ -211,7 +211,7 @@ void *client_handler(void *param) {
         if (check_space(fileSize)) {
             perror("[-] Spazio non sufficiente\n");
             char* msg_error = "[-] Not enough space";
-            send(sock,msg_error,strlen(msg_error),0);
+            send(sock,msg_error,strlen(msg_error),MSG_NOSIGNAL);
             free(fullpath);
             free(handler_param);
             return NULL;
@@ -222,14 +222,14 @@ void *client_handler(void *param) {
         if (file == NULL) {
             perror("[-] Errore nell'apertura del file\n");
             char* msg_error = "[-] Error opening the file, check the file path";
-            send(sock,msg_error,strlen(msg_error),0);
+            send(sock,msg_error,strlen(msg_error),MSG_NOSIGNAL);
             free(fullpath);
             free(handler_param);
             return NULL;
         }
 
         // conferma positiva al client
-        send(sock,"OK",strlen("OK"),0);
+        send(sock,"OK",strlen("OK"),MSG_NOSIGNAL);
 
         // locking del file per la scrittura 
         int fd = fileno(file);
@@ -254,10 +254,10 @@ void *client_handler(void *param) {
         // invio al client l'esito dell'operzione
         if (!error){
             char* msg = "File uploaded successfully";
-            send(sock,msg, strlen(msg),0);
+            send(sock,msg, strlen(msg),MSG_NOSIGNAL);
         }else{
             char* msg = "Error while loading file";
-            send(sock,msg, strlen(msg),0);           
+            send(sock,msg, strlen(msg),MSG_NOSIGNAL);           
             if (remove(fullpath) == 0) {
                 printf("File deleted successfully\n");
             } else {
@@ -269,25 +269,30 @@ void *client_handler(void *param) {
 
     } else if (strcmp(op,"GET") == 0){
         // operazione GET : invio di un file
-
+        
         // apetura del file per la lettura
         FILE *file = fopen(fullpath,"rb");
         if (file == NULL) {
             perror("[-] errore nell'apertura del file\n");
             char* msg_error = "[-] Error opening the file, check the file path";
-            send(sock,msg_error,strlen(msg_error),0);
+            send(sock,msg_error,strlen(msg_error),MSG_NOSIGNAL);
             free(fullpath);
             free(handler_param);
             return NULL;
         }
         //conferma positiva al client e locking del file per la scrittura
-        send(sock,"OK",strlen("OK"),0);
+        if(send(sock,"OK",strlen("OK"),MSG_NOSIGNAL) == -1){
+            perror("[-] Errore nell'invio dei dati tramite socket");
+            fclose(file);
+            free(fullpath);
+            free(handler_param);
+            return NULL;
+        }
         acquire_lock_reader(fileno(file));
-
         // lettura e invio dei dati al client
         int bytes_read, bytes_sent;
         while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
-            bytes_sent = send(sock, buffer, bytes_read, 0);
+            bytes_sent = send(sock, buffer, bytes_read, MSG_NOSIGNAL);
             if (bytes_sent < 0) {
                 perror("[-] Errore nell'invio dei dati tramite socket");
                 fclose(file);
@@ -301,7 +306,6 @@ void *client_handler(void *param) {
         fclose(file);
         release_lock(fileno(file));
         memset(buffer,0,BUFFER_SIZE);
-        
 
     } else if (strcmp(op,"INF") == 0){
         // operazione INF : lettura directory
@@ -309,7 +313,7 @@ void *client_handler(void *param) {
         // controllo se la directory esiste
         if (access(fullpath,F_OK) == -1){
             printf("[-] Error: directory non esistente\n");
-            send(sock,"NO",strlen("NO"),0);
+            send(sock,"NO",strlen("NO"),MSG_NOSIGNAL);
             free(fullpath);
             free(handler_param);
             return NULL;
@@ -319,16 +323,16 @@ void *client_handler(void *param) {
         char* output_ls = execute_ls_la(fullpath);
         if (output_ls == NULL){
             perror("[-] Error:output_ls is NULL\n");
-            send(sock,"NO",strlen("NO"),0);
+            send(sock,"NO",strlen("NO"),MSG_NOSIGNAL);
             free(fullpath);
             free(handler_param);
             return NULL;
         }
         // conferma positiva
-        send(sock,"OK",strlen("OK"),0);
+        send(sock,"OK",strlen("OK"),MSG_NOSIGNAL);
 
         // Invio dell'output di "ls -la" al client
-        int bytes_sent = send(sock,output_ls,strlen(output_ls),0);
+        int bytes_sent = send(sock,output_ls,strlen(output_ls),MSG_NOSIGNAL);
         if (bytes_sent < 0){
             perror("[-] Errore nell'invio dei dati tramite socket");
             free(output_ls);
@@ -367,6 +371,10 @@ int parse_arguments(int argc, char *argv[], ServerConfig *config) {
                 break;
             case 'd':
                 char *user_path = getenv("HOME");
+                if (user_path == NULL){
+                    perror("[-] Error:getenv\n");
+                    exit(1);
+                }
                 char *full_path = malloc(strlen(user_path) + strlen(optarg) + 1);
                 strcpy(full_path,user_path);
                 strcat(full_path,optarg);
@@ -469,7 +477,6 @@ int main(int argc, char *argv[]) {
     }
 
     close(server_sock);
-
     return 0;
 }
 
