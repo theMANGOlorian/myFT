@@ -134,11 +134,15 @@ void download(int socket, const char *remote_name_path, const char *local_name_p
     bytes_recv = recv(socket,buffer,BUFFER_SIZE,0);
     if (bytes_recv <= 0){
         perror("[-] Errore nella ricezione del file\n");
+        if (remove(full_local_path) != 0)
+            perror("Error deleting file");
         exit(1);
     }
     // controllo della risposta negativa dal server
     if (strncmp(buffer,"[-]",3) == 0){
         printf("Server: %s\n",buffer);
+        if (remove(full_local_path) != 0)
+            perror("Error deleting file");
         exit(1);
     }
     // rimuove l'header dal buffer prima di scrivere il file
@@ -158,12 +162,15 @@ void download(int socket, const char *remote_name_path, const char *local_name_p
     
     fclose(file);
 
-    free(full_local_path);
-    if (!error)
-        printf("File downloaded successfully\n");
-    else
-        printf("Error while reading file\n");
     
+    if (!error){
+        printf("File downloaded successfully\n");
+    }else{
+        printf("Error while reading file\n");
+        if (remove(full_local_path) != 0)
+            perror("Error deleting file");
+    }
+    free(full_local_path);
     
 }
 

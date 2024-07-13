@@ -14,7 +14,6 @@ Descrizione: Applicazione Client/Server per il trasferimento file.
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <fcntl.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
@@ -35,7 +34,12 @@ void acquire_lock_writer(int f){
     lock.l_whence = SEEK_SET;
     lock.l_start = 0;
     lock.l_len = 0;
-    fcntl(f, F_SETLKW, &lock); // Lock e attesa
+
+    if (fcntl(f, F_SETLKW, &lock) == -1){
+        perror("locking writer");
+    }else{
+        printf("Lock scrittura preso\n");
+    }
 }
 void acquire_lock_reader(int f){
     struct flock lock;
@@ -43,7 +47,11 @@ void acquire_lock_reader(int f){
     lock.l_whence = SEEK_SET;
     lock.l_start = 0;
     lock.l_len = 0;
-    fcntl(f, F_SETLKW, &lock); // Lock e attesa
+    if (fcntl(f, F_SETLKW, &lock) == -1){
+        perror("locking reader");
+    }else{
+        printf("Lock lettura preso\n");
+    }
 }
 void release_lock(int f){
     struct flock lock;
@@ -51,7 +59,11 @@ void release_lock(int f){
     lock.l_whence = SEEK_SET;
     lock.l_start = 0;
     lock.l_len = 0;
-    fcntl(f, F_SETLKW, &lock); // Lock e attesa
+    if (fcntl(f, F_SETLK, &lock) == -1){
+        perror("release lock");
+    }else{
+        printf("Lock rilasciato\n");
+    }
 }
 
 /*
@@ -190,7 +202,7 @@ void *client_handler(void *param) {
     bytes_recv = recv(sock, buffer, BUFFER_SIZE,0);
     if (bytes_recv <= 0){
         perror("[-] Errore nella ricezione della richiesta\n ");
-        return NULL;
+        exit(EXIT_FAILURE);
     }
     // parsing della richiesta ricevuta
     op = strtok(buffer," "); //tipo di operazione (PUT, GET, INF)
@@ -214,7 +226,7 @@ void *client_handler(void *param) {
             send(sock,msg_error,strlen(msg_error),MSG_NOSIGNAL);
             free(fullpath);
             free(handler_param);
-            return NULL;
+            exit(EXIT_FAILURE);
         }
 
         // Apertura del file in scrittura
@@ -225,7 +237,7 @@ void *client_handler(void *param) {
             send(sock,msg_error,strlen(msg_error),MSG_NOSIGNAL);
             free(fullpath);
             free(handler_param);
-            return NULL;
+            exit(EXIT_FAILURE);
         }
 
         // conferma positiva al client
@@ -248,8 +260,7 @@ void *client_handler(void *param) {
             memset(buffer, 0, BUFFER_SIZE);
             fileSize -= bytes_recv;
         }
-        // Chiusura del file
-        fclose(file);
+        
         
         // invio al client l'esito dell'operzione
         if (!error){
@@ -266,6 +277,8 @@ void *client_handler(void *param) {
         }
         // relascio del lock
         release_lock(fd);
+        // Chiusura del file
+        fclose(file);
 
     } else if (strcmp(op,"GET") == 0){
         // operazione GET : invio di un file
@@ -278,7 +291,7 @@ void *client_handler(void *param) {
             send(sock,msg_error,strlen(msg_error),MSG_NOSIGNAL);
             free(fullpath);
             free(handler_param);
-            return NULL;
+            exit(EXIT_FAILURE);
         }
         //conferma positiva al client e locking del file per la scrittura
         if(send(sock,"OK",strlen("OK"),MSG_NOSIGNAL) == -1){
@@ -286,7 +299,7 @@ void *client_handler(void *param) {
             fclose(file);
             free(fullpath);
             free(handler_param);
-            return NULL;
+            exit(EXIT_FAILURE);
         }
         acquire_lock_reader(fileno(file));
         // lettura e invio dei dati al client
@@ -299,12 +312,13 @@ void *client_handler(void *param) {
                 release_lock(fileno(file));
                 free(fullpath);
                 free(handler_param);
-                return NULL;
+                exit(EXIT_FAILURE);
             }
         }
         // Chiusura del file e rilascio del lock
-        fclose(file);
         release_lock(fileno(file));
+        fclose(file);
+        
         memset(buffer,0,BUFFER_SIZE);
 
     } else if (strcmp(op,"INF") == 0){
@@ -316,7 +330,7 @@ void *client_handler(void *param) {
             send(sock,"NO",strlen("NO"),MSG_NOSIGNAL);
             free(fullpath);
             free(handler_param);
-            return NULL;
+            exit(EXIT_FAILURE);
         }
 
         // esecuzione del comando "ls -la" sulla directory specificata
@@ -326,7 +340,7 @@ void *client_handler(void *param) {
             send(sock,"NO",strlen("NO"),MSG_NOSIGNAL);
             free(fullpath);
             free(handler_param);
-            return NULL;
+            exit(EXIT_FAILURE);
         }
         // conferma positiva
         send(sock,"OK",strlen("OK"),MSG_NOSIGNAL);
@@ -338,7 +352,7 @@ void *client_handler(void *param) {
             free(output_ls);
             free(fullpath);
             free(handler_param);
-            return NULL;
+            exit(EXIT_FAILURE);
         }
         free(output_ls);
     }
@@ -347,7 +361,7 @@ void *client_handler(void *param) {
     close(sock);
     free(fullpath);
     free(handler_param);
-    return NULL;
+    exit(EXIT_SUCCESS);
 }
 
 /*
@@ -396,10 +410,19 @@ int parse_arguments(int argc, char *argv[], ServerConfig *config) {
     return 0;
 }
 
+void sigchld_handler(int sig) {
+    pid_t pid;
+    int status;
+
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        printf("Child process %d terminated\n", pid);
+        kill(pid, SIGKILL);
+    }
+}
 
 int main(int argc, char *argv[]) {
-
     ServerConfig config;
+    
     // gestione argomenti linea di comando
     if (parse_arguments(argc, argv, &config) != 0) {
         return 1;
@@ -446,29 +469,42 @@ int main(int argc, char *argv[]) {
     listen(server_sock, MAX_CLIENTS);
     printf("Waiting for incoming connections...\n");
 
+    // Setup della gestione del segnale SIGCHLD
+    struct sigaction sa;
+    sa.sa_handler = sigchld_handler;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART;
+    if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+        perror("sigaction");
+        return 1;
+    }
+
     // ciclo principale del server per gestire le connessioni in ingresso
     while ((client_sock = accept(server_sock, (struct sockaddr *)&client, &client_len))) {
         printf("Connection accepted\n");
 
-        // creazione di un thread per gestire il client in ingresso
-        pthread_t client_thread;
-
-        ClientHandlerParam *handler_param = malloc(sizeof(ClientHandlerParam));
-        if (handler_param == NULL) {
-            perror("Could not allocate memory for handler_args");
-            return 1;
-        }
-        handler_param->client_socket = client_sock;
-        handler_param->config = &config;
-
-
-        //creazione del thread per gestire il client con la funzione client_hadler
-        if (pthread_create(&client_thread, NULL, client_handler, (void*)handler_param) < 0) {
-            perror("Could not create thread");
-            return 1;
+        // creazione di un processo figlio per gestire il client in ingresso
+        pid_t pid = fork();
+        if (pid < 0) {
+            perror("Could not create process");
+            continue;
         }
 
-        printf("Handler assigned\n");
+        if (pid == 0) { // Questo blocco di codice viene eseguito solo nel processo figlio
+            close(server_sock); // Il processo figlio non ha bisogno del socket del server
+
+            ClientHandlerParam handler_param;
+            handler_param.client_socket = client_sock;
+            handler_param.config = &config;
+
+            client_handler((void*)&handler_param);
+
+            close(client_sock);
+            exit(EXIT_SUCCESS);
+        } else { // Questo blocco di codice viene eseguito solo nel processo padre
+            close(client_sock); // Il processo padre non ha bisogno del socket del client
+        }
+        
     }
     
     if (client_sock < 0) {
@@ -479,4 +515,5 @@ int main(int argc, char *argv[]) {
     close(server_sock);
     return 0;
 }
+
 

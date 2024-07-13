@@ -1,7 +1,7 @@
 #ifndef MYFTSERVER_H
 #define MYFTSERVER_H
 
-#define MAX_CLIENTS 10
+#define MAX_CLIENTS 100
 #define BUFFER_SIZE 1024
 
 typedef struct {
@@ -34,5 +34,7 @@ void *client_handler(void *param);
 
 /* Funzione per il parsing degli argomenti della linea di comando */
 int parse_arguments(int argc, char *argv[], ServerConfig *config);
+
+void sigchld_handler(int sig) ;
 
 #endif
